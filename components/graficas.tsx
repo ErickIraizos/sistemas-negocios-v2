@@ -2,10 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Download, AlertCircle } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { AlertCircle } from 'lucide-react';
+
 import {
   LineChart,
   Line,
@@ -54,7 +52,6 @@ export function Graficas() {
   const [chartType, setChartType] = useState<ChartType>('bar');
   const [chartData, setChartData] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     loadHistory();
@@ -129,151 +126,6 @@ export function Graficas() {
 
   const handleChartTypeChange = (type: ChartType) => {
     setChartType(type);
-  };
-
-  const downloadPDF = async () => {
-    if (!selectedQuery || chartData.length === 0) return;
-
-    setDownloading(true);
-    try {
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-
-      // Título
-      pdf.setFontSize(16);
-      pdf.setTextColor(30, 30, 30);
-      pdf.text('Reporte de Gráfica', 20, 20);
-
-      // Tipo de gráfica
-      pdf.setFontSize(12);
-      pdf.text(`Tipo: ${getChartTypeName(chartType)}`, 20, 30);
-
-      // Información de la consulta
-      pdf.setFontSize(10);
-      pdf.setTextColor(80, 80, 80);
-      const consultaTruncada = selectedQuery.query.length > 100 
-        ? selectedQuery.query.substring(0, 100) + '...' 
-        : selectedQuery.query;
-      pdf.text(`Consulta: ${consultaTruncada}`, 20, 40);
-      pdf.text(`Fecha: ${new Date(selectedQuery.timestamp).toLocaleString('es-ES')}`, 20, 48);
-
-      // Intentar capturar la gráfica si está disponible
-      if (chartRef.current) {
-        try {
-          const canvas = await html2canvas(chartRef.current, {
-            backgroundColor: '#ffffff',
-            scale: 2,
-            useCORS: true,
-          });
-
-          const imgData = canvas.toDataURL('image/png');
-          const imgWidth = pageWidth - 40;
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
-          
-          // Validar que la altura sea razonable
-          if (imgHeight < 250) {
-            pdf.addImage(imgData, 'PNG', 20, 56, imgWidth, imgHeight);
-          }
-        } catch (canvasError) {
-          console.error('No se pudo capturar la gráfica:', canvasError);
-          // Continuar sin la imagen si falla la captura
-        }
-      }
-
-      // Nueva página para métricas
-      pdf.addPage();
-      pdf.setFontSize(14);
-      pdf.setTextColor(30, 30, 30);
-      pdf.text('Análisis Detallado de Métricas', 20, 20);
-
-      // Información de datos
-      pdf.setFontSize(10);
-      pdf.setTextColor(30, 30, 30);
-      let yPos = 35;
-      
-      pdf.text('Resumen de Datos:', 20, yPos);
-      yPos += 10;
-      
-      pdf.setFontSize(9);
-      pdf.setTextColor(60, 60, 60);
-      pdf.text(`Total de registros: ${chartData.length}`, 25, yPos);
-      yPos += 8;
-
-      // Estadísticas
-      const values = chartData.map((d) => d.value);
-      const sum = values.reduce((a, b) => a + b, 0);
-      const avg = sum / values.length;
-      const max = Math.max(...values);
-      const min = Math.min(...values);
-
-      pdf.text(`Suma total: ${sum.toLocaleString('es-ES')}`, 25, yPos);
-      yPos += 8;
-      pdf.text(`Promedio: ${avg.toFixed(2)}`, 25, yPos);
-      yPos += 8;
-      pdf.text(`Máximo: ${max.toLocaleString('es-ES')}`, 25, yPos);
-      yPos += 8;
-      pdf.text(`Mínimo: ${min.toLocaleString('es-ES')}`, 25, yPos);
-      yPos += 15;
-
-      // Detalles por elemento
-      pdf.text('Detalles por Elemento:', 20, yPos);
-      yPos += 10;
-      
-      pdf.setFontSize(8);
-      chartData.forEach((item, idx) => {
-        const percentage = ((item.value / sum) * 100).toFixed(2);
-        const text = `${idx + 1}. ${item.name}: ${item.value.toLocaleString('es-ES')} (${percentage}%)`;
-        
-        // Manejo de saltos de página
-        if (yPos > 270) {
-          pdf.addPage();
-          yPos = 20;
-        }
-        
-        pdf.text(text, 25, yPos);
-        yPos += 7;
-      });
-
-      // Interpretación
-      yPos += 10;
-      if (yPos > 250) {
-        pdf.addPage();
-        yPos = 20;
-      }
-
-      pdf.setFontSize(10);
-      pdf.text('Interpretación:', 20, yPos);
-      yPos += 10;
-
-      pdf.setFontSize(9);
-      const interpretation = generateInterpretation(chartData, chartType);
-      const splitText = pdf.splitTextToSize(interpretation, pageWidth - 40);
-      pdf.text(splitText, 25, yPos);
-
-      pdf.save(`grafica_${new Date().getTime()}.pdf`);
-    } catch (err) {
-      console.error('Error generating PDF:', err);
-      setError('Error al descargar el PDF');
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const getChartTypeName = (type: ChartType): string => {
-    const names: Record<ChartType, string> = {
-      bar: 'Gráfica de Barras Vertical',
-      barh: 'Gráfica de Barras Horizontal',
-      line: 'Gráfica de Línea',
-      pie: 'Gráfica de Pastel',
-      area: 'Gráfica de Área',
-      scatter: 'Gráfica de Dispersión',
-      radar: 'Gráfica de Radar',
-      composed: 'Gráfica Compuesta',
-      treemap: 'Mapa de Árbol',
-      funnel: 'Gráfica de Embudo',
-      heatmap: 'Gráfica de Calor (Heatmap)',
-    };
-    return names[type];
   };
 
   const generateInterpretation = (data: any[], type: ChartType): string => {
@@ -668,39 +520,57 @@ export function Graficas() {
             </div>
 
             <div className="space-y-4">
-              <Button
-                onClick={downloadPDF}
-                disabled={downloading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
-              >
-                <Download className="w-4 h-4" />
-                {downloading ? 'Descargando...' : 'Descargar como PDF con Análisis Completo'}
-              </Button>
-
-              {/* Interpretación Rápida */}
-              <div className="bg-slate-800 rounded-lg p-4 border border-slate-600">
-                <p className="text-sm font-semibold text-white mb-3">Resumen Rápido:</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                  <div className="bg-slate-700 rounded p-2">
-                    <p className="text-gray-400">Total</p>
-                    <p className="text-blue-400 font-bold">{chartData.reduce((sum, d) => sum + d.value, 0).toLocaleString('es-ES')}</p>
-                  </div>
-                  <div className="bg-slate-700 rounded p-2">
-                    <p className="text-gray-400">Promedio</p>
-                    <p className="text-green-400 font-bold">{(chartData.reduce((sum, d) => sum + d.value, 0) / chartData.length).toFixed(2)}</p>
-                  </div>
-                  <div className="bg-slate-700 rounded p-2">
-                    <p className="text-gray-400">Máximo</p>
-                    <p className="text-orange-400 font-bold">{Math.max(...chartData.map(d => d.value)).toLocaleString('es-ES')}</p>
-                  </div>
-                  <div className="bg-slate-700 rounded p-2">
-                    <p className="text-gray-400">Elementos</p>
-                    <p className="text-purple-400 font-bold">{chartData.length}</p>
+              {/* Resumen Completo */}
+              <div className="bg-slate-800 rounded-lg p-4 border border-slate-600 space-y-4">
+                <div>
+                  <p className="text-sm font-semibold text-white mb-3">Resumen:</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-4">
+                    <div className="bg-slate-700 rounded p-2">
+                      <p className="text-gray-400">Total</p>
+                      <p className="text-blue-400 font-bold">{chartData.reduce((sum, d) => sum + d.value, 0).toLocaleString('es-ES')}</p>
+                    </div>
+                    <div className="bg-slate-700 rounded p-2">
+                      <p className="text-gray-400">Promedio</p>
+                      <p className="text-green-400 font-bold">{(chartData.reduce((sum, d) => sum + d.value, 0) / chartData.length).toFixed(2)}</p>
+                    </div>
+                    <div className="bg-slate-700 rounded p-2">
+                      <p className="text-gray-400">Máximo</p>
+                      <p className="text-orange-400 font-bold">{Math.max(...chartData.map(d => d.value)).toLocaleString('es-ES')}</p>
+                    </div>
+                    <div className="bg-slate-700 rounded p-2">
+                      <p className="text-gray-400">Mínimo</p>
+                      <p className="text-pink-400 font-bold">{Math.min(...chartData.map(d => d.value)).toLocaleString('es-ES')}</p>
+                    </div>
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-3">
-                  El PDF incluirá estadísticas completas, porcentajes de cada elemento e interpretación detallada.
-                </p>
+
+                {/* Detalles por Elemento */}
+                <div>
+                  <p className="text-xs font-semibold text-white mb-2">Detalles por Elemento:</p>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {chartData.map((item, idx) => {
+                      const total = chartData.reduce((sum, d) => sum + d.value, 0);
+                      const percentage = ((item.value / total) * 100).toFixed(2);
+                      return (
+                        <div key={idx} className="bg-slate-700 rounded p-2 text-xs flex justify-between items-center">
+                          <span className="text-gray-300 flex-grow">{item.name}</span>
+                          <div className="text-right">
+                            <span className="text-gray-400">{item.value.toLocaleString('es-ES')}</span>
+                            <span className="text-purple-400 ml-2">({percentage}%)</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Interpretación */}
+                <div>
+                  <p className="text-xs font-semibold text-white mb-2">Interpretación:</p>
+                  <p className="text-xs text-gray-300 bg-slate-700 rounded p-2 leading-relaxed">
+                    {generateInterpretation(chartData, chartType)}
+                  </p>
+                </div>
               </div>
             </div>
           </CardContent>
